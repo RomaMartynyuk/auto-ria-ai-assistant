@@ -15,3 +15,13 @@ class CarListView(APIView):
 
         serializer = CarSerializer(cars, many=True)
         return Response(serializer.data)
+
+class CarRecommendView(APIView):
+    def get(self, request):
+        max_price = request.GET.get('max_price')
+        min_year = request.GET.get('min_year')
+
+        cars = filter_cars(max_price, min_year).order_by('-year')[:5]
+
+        serializer = CarSerializer(cars, many=True)
+        return Response(serializer.data)
