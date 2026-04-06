@@ -21,7 +21,9 @@ class CarRecommendView(APIView):
         max_price = request.GET.get('max_price')
         min_year = request.GET.get('min_year')
 
-        cars = filter_cars(max_price, min_year).order_by('-year')[:5]
+        cars = filter_cars(max_price, min_year)
+
+        cars = sorted(cars, key=lambda x: x.year, reverse=True)[:5]
 
         serializer = CarSerializer(cars, many=True)
         return Response(serializer.data)
