@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from cars.models import Car
 from cars.serializers.car_serializer import CarSerializer
 from cars.services.car_service import filter_cars
-from cars.tasks import process_car_search
+from cars.tasks import process_car_search, parse_cars_task
 
 
 class CarListView(APIView):
@@ -23,6 +23,7 @@ class CarRecommendView(APIView):
         min_year = request.GET.get('min_year')
 
         process_car_search.delay(max_price, min_year)
+        parse_cars_task(max_price)
 
         cars = filter_cars(max_price, min_year)
         cars = sorted(cars, key=lambda x: x.year, reverse=True)[:5]
