@@ -23,7 +23,7 @@ class CarRecommendView(APIView):
         min_year = request.GET.get('min_year')
 
         process_car_search.delay(max_price, min_year)
-        parse_cars_task(max_price)
+        parse_cars_task.delay(max_price)
 
         cars = filter_cars(max_price, min_year)
         cars = sorted(cars, key=lambda x: x.year, reverse=True)[:5]

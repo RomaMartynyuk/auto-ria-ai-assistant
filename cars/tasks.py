@@ -1,7 +1,9 @@
 from celery import shared_task
 import time
 
+from cars.models import Car
 from cars.parser.auto_ria_parser import parse_auto_ria
+from cars.parser.mapper import map_parsed_car_to_model
 
 
 @shared_task
@@ -25,11 +27,24 @@ def process_car_search(max_price, min_year):
     return {"status": "done"}
 
 @shared_task
-def parse_cars_task(max_price = None):
-    print("START PARSING")
+def parse_cars_task(max_price=None):
+    cars_data = parse_auto_ria(max_price)
 
-    cars = parse_auto_ria(max_price)
+    for raw_car in cars_data:
+        mapped = map_parsed_car_to_model(raw_car)
 
-    print(f"PARSED: {cars}")
+        if not mapped:
+            continue
 
-    return cars
+        Car.objects.update_or_create(
+            link=mapped["link"],
+            defaults={
+                "brand": mapped["brand"],
+                "model": mapped["model"],
+                "year": mapped["year"],
+                "price": mapped["price"],
+                "mileage": mapped["mileage"],
+            }
+        )
+
+    return {"status": "saved"}
