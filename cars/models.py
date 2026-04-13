@@ -6,13 +6,13 @@ class Car(models.Model):
     year = models.IntegerField()
     price = models.DecimalField(decimal_places=2, max_digits=10)
     mileage = models.IntegerField()
-    link = models.URLField(unique=True)
+    link = models.URLField(unique=True, default=None)
 
     def __str__(self):
         return f"{self.brand} {self.model} {str(self.year)}"
 
 class SearchRequest(models.Model):
-    max_price = models.DecimalField(decimal_places=2, max_digits=10)
-    min_year = models.IntegerField()
+    max_price = models.DecimalField(decimal_places=2, max_digits=10, null=True, blank=True)
+    min_year = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

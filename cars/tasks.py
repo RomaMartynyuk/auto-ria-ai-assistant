@@ -1,4 +1,5 @@
 from celery import shared_task
+from django.core.cache import cache
 import time
 
 from cars.models import Car
@@ -46,5 +47,7 @@ def parse_cars_task(max_price=None):
                 "mileage": mapped["mileage"],
             }
         )
+
+    cache.clear()
 
     return {"status": "saved"}
