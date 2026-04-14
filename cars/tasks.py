@@ -48,6 +48,6 @@ def parse_cars_task(max_price=None):
             }
         )
 
-    cache.clear()
+    cache.delete_pattern("cars_*")
 
     return {"status": "saved"}
