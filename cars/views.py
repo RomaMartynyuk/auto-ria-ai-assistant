@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from cars.models import Car, SearchRequest
 from cars.serializers.car_serializer import CarSerializer
 from cars.services.car_service import filter_cars
+from cars.services.ai_service import get_ai_top_cars, map_ai_response
 from cars.services.query_normalizer import normalize_car_query
 from cars.tasks import process_car_search, parse_cars_task
 
@@ -39,7 +40,13 @@ class CarRecommendView(APIView):
             params["min_year"]
         )
 
-        cars = sorted(cars, key=lambda x: x.year, reverse=True)[:5]
+        cars = sorted(cars, key=lambda x: x.year, reverse=True)[:15]
+
+        try:
+            ai_result = get_ai_top_cars(cars)
+            cars = map_ai_response(ai_result, cars)
+        except Exception as e:
+            print("AI ERROR:", e)
 
         serializer = CarSerializer(cars, many=True)
         return Response(serializer.data)
