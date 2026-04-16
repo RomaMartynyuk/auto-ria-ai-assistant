@@ -133,6 +133,10 @@ LOGGING = {
     },
 }
 
+# AI API
+AI_PROVIDER = "ollama"
+# Ollama | OpenAI | OpenRouter
+
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 

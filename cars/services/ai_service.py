@@ -1,6 +1,8 @@
 import json
 from openai import OpenAI
 import os
+import requests
+from django.conf import settings
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
@@ -16,39 +18,60 @@ def compress_car(car):
 
 def build_prompt(cars):
     return f"""
-You are a car recommendation expert.
+You are a car expert.
 
-Select the 5 best cars from the list based on:
-- price
-- year
-- mileage
-
-Return ONLY JSON in this format:
-[
-  {{
-    "id": 1,
-    "reason": "short explanation"
-  }}
-]
+From this list of cars, choose the best 5 options.
 
 Cars:
 {cars}
+
+STRICT RULES:
+- Return ONLY JSON
+- No text outside JSON
+- MUST include "id"
+- If you don't include id → response is invalid
+
+Format:
+
+[
+  {{
+    "id": 1,
+    "reason": "short reason"
+  }}
+]
 """
 
 def get_ai_top_cars(cars):
     compressed = [compress_car(c) for c in cars]
-
     prompt = build_prompt(compressed)
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.3
-    )
+    provider = getattr(settings, "AI_PROVIDER", "openai")
 
-    content = response.choices[0].message.content
+    try:
+        if provider == "openai":
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3
+            )
+            content = response.choices[0].message.content
+
+        elif provider == "openrouter":
+            content = ask_openrouter(prompt)
+
+        elif provider == "ollama":
+            content = ask_ollama(prompt)
+
+        else:
+            raise ValueError("Invalid AI provider")
+
+        return json.loads(content)
+
+    except Exception as e:
+        print("AI ERROR:", e)
+        return []
 
     return json.loads(content)
 
@@ -58,9 +81,57 @@ def map_ai_response(ai_response, cars):
     result = []
 
     for item in ai_response:
-        car = car_dict.get(item["id"])
+        car_id = item.get("id")
+        reason = item.get("reason", "")
+
+        if not car_id:
+            continue
+
+        car = car_dict.get(car_id)
+
         if car:
             car.reason = item["reason"]
             result.append(car)
 
     return result
+
+def ask_ollama(prompt: str) -> str:
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "mistral",
+                "prompt": prompt,
+                "stream": False
+            }
+        )
+
+        return response.json().get("response", "")
+
+    except Exception as e:
+        print("OLLAMA ERROR:", e)
+        return ""
+
+
+
+def ask_openrouter(prompt: str) -> str:
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY')}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "mistralai/mistral-7b-instruct",
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+            },
+        )
+
+        return response.json()["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        print("OPENROUTER ERROR:", e)
+        return ""
