@@ -8,7 +8,6 @@ from cars.services.ai_service import get_ai_top_cars, map_ai_response
 from cars.services.query_normalizer import normalize_car_query
 from cars.tasks import process_car_search, parse_cars_task
 
-
 class CarListView(APIView):
     def get(self, request):
         max_price = request.GET.get('max_price')
@@ -25,22 +24,35 @@ class CarRecommendView(APIView):
 
         SearchRequest.objects.create(
             max_price=params["max_price"],
-            min_year=params["min_year"]
+            min_year=params["min_year"],
+            max_mileage=params["max_mileage"],
+            brand=params["brand"],
+            ordering=params["ordering"],
         )
 
         process_car_search.delay(
             params["max_price"],
-            params["min_year"]
+            params["min_year"],
+            # params["max_mileage"],
+            # params["brand"],
+            # params["ordering"]
         )
 
         parse_cars_task.delay(params["max_price"])
 
         cars = filter_cars(
             params["max_price"],
-            params["min_year"]
+            params["min_year"],
+            # params["max_mileage"],
+            # params["brand"],
+            # params["ordering"]
         )
 
-        cars = sorted(cars, key=lambda x: x.year, reverse=True)[:15]
+        # cars = sorted(cars, key=lambda x: x.year, reverse=True)[:15]
+        cars = cars[:15]
+
+        if not cars:
+            return Response({"error": "No cars found"}, status=404)
 
         try:
             ai_result = get_ai_top_cars(cars)
