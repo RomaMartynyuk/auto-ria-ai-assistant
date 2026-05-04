@@ -1,13 +1,15 @@
 import re
+import os
 
 from playwright.sync_api import sync_playwright
 
 
 def parse_auto_ria(max_price=None):
     cars = []
+    headless = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=headless)
 
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",

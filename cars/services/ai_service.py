@@ -79,6 +79,7 @@ def map_ai_response(ai_response, cars):
     car_dict = {car.id: car for car in cars}
 
     result = []
+    used_ids = set()
 
     for item in ai_response:
         car_id = item.get("id")
@@ -89,16 +90,29 @@ def map_ai_response(ai_response, cars):
 
         car = car_dict.get(car_id)
 
-        if car:
-            car.reason = item["reason"]
+        if car and car_id not in used_ids:
+            car.reason = reason
             result.append(car)
+            used_ids.add(car_id)
+
+    # Fallback: keep response stable with up to 5 items even when AI
+    # returns invalid/short JSON.
+    for car in cars:
+        if len(result) >= 5:
+            break
+        if car.id in used_ids:
+            continue
+        car.reason = getattr(car, "reason", "") or "Selected by fallback ranking."
+        result.append(car)
+        used_ids.add(car.id)
 
     return result
 
 def ask_ollama(prompt: str) -> str:
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     try:
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            f"{ollama_base_url}/api/generate",
             json={
                 "model": "mistral",
                 "prompt": prompt,

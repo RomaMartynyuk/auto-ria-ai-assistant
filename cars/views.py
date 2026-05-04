@@ -37,7 +37,6 @@ class CarRecommendView(APIView):
             # params["brand"],
             # params["ordering"]
         )
-
         parse_cars_task.delay(params["max_price"])
 
         cars = filter_cars(
@@ -48,17 +47,35 @@ class CarRecommendView(APIView):
             # params["ordering"]
         )
 
-        # cars = sorted(cars, key=lambda x: x.year, reverse=True)[:15]
-        cars = cars[:15]
-
         if not cars:
-            return Response({"error": "No cars found"}, status=404)
+            return Response(
+                {
+                    "status": "processing",
+                    "message": "Data is being parsed. Please retry in a few seconds.",
+                },
+                status=202,
+            )
+
+        # Prefer cars closer to requested budget, then newer models.
+        if params["max_price"]:
+            target_price = float(params["max_price"])
+            cars = sorted(
+                cars,
+                key=lambda c: (abs(float(c.price) - target_price), -int(c.year))
+            )
+        else:
+            cars = sorted(cars, key=lambda c: int(c.year), reverse=True)
+
+        # Keep a candidate pool for AI, then return top 5.
+        cars = cars[:15]
 
         try:
             ai_result = get_ai_top_cars(cars)
             cars = map_ai_response(ai_result, cars)
         except Exception as e:
             print("AI ERROR:", e)
+
+        cars = cars[:5]
 
         serializer = CarSerializer(cars, many=True)
         return Response(serializer.data)

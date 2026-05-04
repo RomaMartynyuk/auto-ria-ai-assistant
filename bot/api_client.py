@@ -1,6 +1,7 @@
 import requests
+import os
 
-BASE_URL = "http://127.0.0.1:8000/api"
+BASE_URL = os.getenv("API_BASE_URL", "http://web:8000/api")
 
 def get_cars(params: dict):
     try:
