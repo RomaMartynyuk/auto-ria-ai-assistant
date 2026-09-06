@@ -15,10 +15,22 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.contrib.messages import api
+from django.http import JsonResponse
 from django.urls import path, include
 
+
+def index(request):
+    return JsonResponse(
+        {
+            "name": "AI Car Finder API",
+            "health": "/api/health/",
+            "cars": "/api/cars/",
+            "recommend": "/api/recommend/?max_price=15000",
+        }
+    )
+
 urlpatterns = [
+    path('', index, name='index'),
     path('admin/', admin.site.urls),
     path('api/', include('cars.urls')),
 ]

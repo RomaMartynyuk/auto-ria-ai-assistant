@@ -1,10 +1,11 @@
 import json
-from openai import OpenAI
+import logging
 import os
-import requests
+import re
+
 from django.conf import settings
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+logger = logging.getLogger(__name__)
 
 def compress_car(car):
     return {
@@ -20,7 +21,8 @@ def build_prompt(cars):
     return f"""
 You are a car expert.
 
-From this list of cars, choose the best 5 options.
+From this list of cars, choose up to 5 best options. Prefer cars close to the
+customer's budget, then consider year and mileage. Use only IDs from the list.
 
 Cars:
 {cars}
@@ -41,39 +43,58 @@ Format:
 ]
 """
 
+
+def parse_ai_json(content):
+    if not content:
+        return []
+
+    cleaned = content.strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL)
+    if fenced:
+        cleaned = fenced.group(1)
+
+    result = json.loads(cleaned)
+    if not isinstance(result, list):
+        raise ValueError("AI response must be a JSON array")
+    return result
+
+
 def get_ai_top_cars(cars):
+    if not cars or settings.AI_PROVIDER == "none":
+        return []
+
     compressed = [compress_car(c) for c in cars]
     prompt = build_prompt(compressed)
 
-    provider = getattr(settings, "AI_PROVIDER", "openai")
-
     try:
-        if provider == "openai":
+        if settings.AI_PROVIDER == "openai":
+            from openai import OpenAI
+
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY is not configured")
+            client = OpenAI(api_key=api_key, timeout=settings.AI_REQUEST_TIMEOUT)
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3
+                model=settings.AI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
             )
             content = response.choices[0].message.content
 
-        elif provider == "openrouter":
+        elif settings.AI_PROVIDER == "openrouter":
             content = ask_openrouter(prompt)
 
-        elif provider == "ollama":
+        elif settings.AI_PROVIDER == "ollama":
             content = ask_ollama(prompt)
 
         else:
-            raise ValueError("Invalid AI provider")
+            raise ValueError(f"Unsupported AI provider: {settings.AI_PROVIDER}")
 
-        return json.loads(content)
+        return parse_ai_json(content)
 
-    except Exception as e:
-        print("AI ERROR:", e)
+    except Exception:
+        logger.exception("AI recommendation failed; using deterministic fallback")
         return []
-
-    return json.loads(content)
 
 def map_ai_response(ai_response, cars):
     car_dict = {car.id: car for car in cars}
@@ -82,7 +103,13 @@ def map_ai_response(ai_response, cars):
     used_ids = set()
 
     for item in ai_response:
-        car_id = item.get("id")
+        if not isinstance(item, dict):
+            continue
+
+        try:
+            car_id = int(item.get("id"))
+        except (TypeError, ValueError):
+            continue
         reason = item.get("reason", "")
 
         if not car_id:
@@ -109,43 +136,40 @@ def map_ai_response(ai_response, cars):
     return result
 
 def ask_ollama(prompt: str) -> str:
+    import requests
+
     ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    try:
-        response = requests.post(
-            f"{ollama_base_url}/api/generate",
-            json={
-                "model": "mistral",
-                "prompt": prompt,
-                "stream": False
-            }
-        )
-
-        return response.json().get("response", "")
-
-    except Exception as e:
-        print("OLLAMA ERROR:", e)
-        return ""
-
-
+    response = requests.post(
+        f"{ollama_base_url.rstrip('/')}/api/generate",
+        json={
+            "model": settings.AI_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+        },
+        timeout=settings.AI_REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json().get("response", "")
 
 def ask_openrouter(prompt: str) -> str:
-    try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY')}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "mistralai/mistral-7b-instruct",
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-            },
-        )
+    import requests
 
-        return response.json()["choices"][0]["message"]["content"]
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("OPENROUTER_API_KEY is not configured")
 
-    except Exception as e:
-        print("OPENROUTER ERROR:", e)
-        return ""
+    response = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": settings.AI_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout=settings.AI_REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
